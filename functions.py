@@ -2,6 +2,7 @@ import openai
 import streamlit as st
 import os
 import requests
+from pathlib import Path
 
 class Chatbot:
     def get_seo_optimized_words(self, messages):
@@ -32,6 +33,19 @@ def is_valid_image_url(url):
             return False
     except requests.RequestException:
         return False
+
+def get_desktop_path():
+    # Get the user's home directory
+    home_dir = Path.home()
+
+    # Define the "Desktop" directory based on the operating system
+    desktop_dir = None
+    if os.name == 'posix':
+        desktop_dir = home_dir / 'Desktop'
+    elif os.name == 'nt':
+        desktop_dir = home_dir / 'Desktop'
+
+    return desktop_dir
 
 if __name__ == "__main__":
     my_chatbot = Chatbot()
