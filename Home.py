@@ -1,9 +1,11 @@
-from os import path
+import os.path
 
+import pandas
 import streamlit as st
-import pandas as pd
-import time
 import functions
+import pandas as pd
+import requests
+import time
 
 # finding current date and time
 current_time = time.localtime()
@@ -15,6 +17,7 @@ date = f"{day}-{month}-{year}"
 st.markdown(f"<p style='text-align: right;'>{date}</p>", unsafe_allow_html=True)
 st.markdown(f"<h1 style='text-align: center;'>✨Image to SEO keywords✨</h1>", unsafe_allow_html=True)
 
+urls_string = None
 
 # creating input box styling
 st.markdown(f"""
@@ -27,83 +30,99 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-url_list = None
-response = None
+url_list = []
+response_list = []
+i = 1
 
-# side bar
-selected_role = st.sidebar.selectbox("Select Role", ["Default Role", "Custom Role"])
-split_by = st.sidebar.selectbox("How urls are seperated by each other", ["Enter", "Space", "Comma (, )", "Custom Character"])
 
-# action upon side bar role selection
-if selected_role == "Default Role":
-    role = "Pretend you're an SEO expert. Create an optimized alt text for the image. Don't Explain any extra thing and always split one images alt by other via \n\n"
-elif selected_role == "Custom Role":
-    st.sidebar.text_input("Enter Custom Role")
+txt_file = st.file_uploader("Enter a text file here", type=['txt'])
 
-# check by which characters urls are separated
-if split_by == "Enter":
-    split_by_char = "\n"
-elif split_by == "Space":
-    split_by_char = " "
-elif split_by == "Comma":
-    split_by_char = ", "
-else:
-    st.sidebar.text_input("Character or string which separates urls")
 
-# ask from user how he want to save the file
-save_choice = st.sidebar.selectbox("Select an option to save csv file", ["Save with date", "Save with name", "Append to an old file"])
-if save_choice == "Save with name":
-    file_name = st.sidebar.text_input("Enter name of the text file")
-elif save_choice == "Save with date":
-    file_name = date
-elif save_choice == "Append to an old file":
-    pass
+# file uploaded is in bytes
+if txt_file:
+    # finding file name of text file
+    file_name = txt_file.name
+    # removing extension from file name
+    file_name = file_name[:-4]
+    st.info(file_name)
 
-url_string = st.text_area("Enter multiple urls here")
+    urls_byte_format = txt_file.read()
 
-# Split the string into a list of URLs using whitespace characters
-if url_string:
-    url_list = url_string.split(f"{split_by_char}")
+    # converting bytes to string
+    urls_string = urls_byte_format.decode('utf-8')
 
-# message dictionary to be passed to openai
-    messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"{role}",
-                        },
-                    ],
-                }
-            ]
+    # handling for when text file is empty
+    if urls_string is not None:
 
-if url_list:
-    for url in url_list:
-        new_dict ={
+        # Split the string into a list of urls by a \n character
+        url_list = urls_string.split("\n")
+
+        # displaying urls on screen
+        # if url_list:
+        #     for url in url_list:
+        #         st.info(url)
+
+        # message dictionary to be passed to openai
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Pretend you're an SEO expert. Create an optimized alt text for the image. Don't Explain any extra thing and always split one images alt by other via \n\n",
+                    },
+                ],
+            }
+        ]
+        # appending new links to message dictionary so that can be send to gpt-4-vision-model
+        for url in url_list:
+            # this functions uses requests library to check if image urls are valid or not
+            check_image = functions.is_valid_image_url(url)
+            if check_image:
+                new_dict ={
                     "type": "image_url",
                     "image_url": {
-                     "url": f"{url}",
+                        "url": f"{url}",
                     },
-                   }
-        messages[0]['content'].append(new_dict)
+                }
+                messages[0]['content'].append(new_dict)
 
 
 
-seo_bot = functions.Chatbot()
+                # making a chatbot object and calling function to return alt texts
+                seo_bot = functions.Chatbot()
+
+                response = seo_bot.get_seo_optimized_words(messages)
+                if response:
+                    response_list.append(response)
+
+                    # displaying alt text on screen
+                    # st.info(response)
+            else:
+                # displaying error one time
+                if i == 1:
+                    st.info(f"An error occurred: Some of the urls are not valid image urls")
+                    i += 1
+
+    else:
+        st.warning("Text File is empty")
 
 
 
+    if response_list and url_list:
+        data = [url_list, response_list]
+        dataframe = pandas.DataFrame(data).transpose()
+        # mentioning name of columns
+        dataframe.columns = ["Image URL", "Suggested alt text"]
+        if os.path.exists(f"files/{file_name}.csv"):
+            if file_name[-1].isdigit():
+                lastdigit = file_name[-1]
+                lastdigit = int(lastdigit)
+                lastdigit += 1
+                file_name[-1] = lastdigit
 
-
-if url_list is not None:
-    response = seo_bot.get_seo_optimized_words(messages)
-
-    response_list = response.split("\n\n")
-
-    # displaying alt text on screen
-    st.info(response)
-
+        # writing data to csv file
+        dataframe.to_csv(f"files/{file_name}.csv", index=False)
 
 
 
